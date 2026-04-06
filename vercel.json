@@ -1,16 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/analytics?period=30d",
-      "schedule": "0 6 * * *"
-    },
-    {
-      "path": "/api/slack/daily",
+      "path": "/api/cron",
       "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/slack/weekly",
-      "schedule": "0 0 * * 1"
     }
   ]
 }
