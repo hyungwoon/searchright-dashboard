@@ -11,6 +11,12 @@ import {
   getFunnel,
   type Period,
 } from "./period-data";
+import type {
+  HomeFunnelData,
+  LeadSummaryData,
+  LeadMagnetData,
+  BlogCardsData,
+} from "./ga4";
 
 export type { Period };
 
@@ -42,6 +48,38 @@ export type AnalyticsData = {
   dailyFunnel: typeof staticData.dailyFunnel;
   channelConversion: typeof staticData.inquiryFunnel.channelAttribution;
   pageConversion: typeof staticData.pageConversion;
+  homeFunnel: HomeFunnelData;
+  leadSummary: LeadSummaryData;
+  leadMagnet: LeadMagnetData;
+  blogCards: BlogCardsData;
+};
+
+const EMPTY_HOME_FUNNEL: HomeFunnelData = {
+  stages: [],
+  channelAttribution: [],
+  dailyTrend: [],
+};
+
+const EMPTY_LEAD_SUMMARY: LeadSummaryData = {
+  home: 0,
+  request: 0,
+  total: 0,
+  prev: { home: 0, request: 0, total: 0 },
+  dailyTrend: [],
+};
+
+const EMPTY_LEAD_MAGNET: LeadMagnetData = {
+  impressions: 0,
+  clicks: 0,
+  ctr: 0,
+  prev: { impressions: 0, clicks: 0, ctr: 0 },
+};
+
+const EMPTY_BLOG_CARDS: BlogCardsData = {
+  impressions: 0,
+  clicks: 0,
+  ctr: 0,
+  prev: { impressions: 0, clicks: 0, ctr: 0 },
 };
 
 function buildStaticResult(period: Period): Omit<AnalyticsData, "loading" | "source" | "fetchedAt"> {
@@ -63,6 +101,10 @@ function buildStaticResult(period: Period): Omit<AnalyticsData, "loading" | "sou
     dailyFunnel: staticData.dailyFunnel,
     channelConversion: staticData.inquiryFunnel.channelAttribution,
     pageConversion: staticData.pageConversion,
+    homeFunnel: EMPTY_HOME_FUNNEL,
+    leadSummary: EMPTY_LEAD_SUMMARY,
+    leadMagnet: EMPTY_LEAD_MAGNET,
+    blogCards: EMPTY_BLOG_CARDS,
   };
 }
 
@@ -121,6 +163,10 @@ export function useAnalytics(period: Period): AnalyticsData {
       dailyFunnel: (iq?.dailyTrend as AnalyticsData["dailyFunnel"]) ?? [],
       channelConversion: (iq?.channelAttribution as AnalyticsData["channelConversion"]) ?? [],
       pageConversion: staticData.pageConversion,
+      homeFunnel: (d.homeFunnel as HomeFunnelData) ?? EMPTY_HOME_FUNNEL,
+      leadSummary: (d.leadSummary as LeadSummaryData) ?? EMPTY_LEAD_SUMMARY,
+      leadMagnet: (d.leadMagnet as LeadMagnetData) ?? EMPTY_LEAD_MAGNET,
+      blogCards: (d.blogCards as BlogCardsData) ?? EMPTY_BLOG_CARDS,
     };
   }
 

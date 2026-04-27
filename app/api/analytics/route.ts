@@ -72,6 +72,30 @@ function buildStaticFallback(period: StaticPeriod): AllData {
       channelAttribution: [],
       dailyTrend: [],
     },
+    homeFunnel: {
+      stages: [],
+      channelAttribution: [],
+      dailyTrend: [],
+    },
+    leadSummary: {
+      home: 0,
+      request: 0,
+      total: 0,
+      prev: { home: 0, request: 0, total: 0 },
+      dailyTrend: [],
+    },
+    leadMagnet: {
+      impressions: 0,
+      clicks: 0,
+      ctr: 0,
+      prev: { impressions: 0, clicks: 0, ctr: 0 },
+    },
+    blogCards: {
+      impressions: 0,
+      clicks: 0,
+      ctr: 0,
+      prev: { impressions: 0, clicks: 0, ctr: 0 },
+    },
   };
 }
 

@@ -131,6 +131,40 @@ function buildWeeklyBlocks(
   ));
   blocks.push(dividerBlock());
 
+  // Lead summary — 홈 인라인 폼 vs 문의 페이지
+  const ls = data.leadSummary;
+  blocks.push(sectionMrkdwn(
+    `*💎 리드 인입 종합 — 총 ${ls.total}건 (${changeIndicator(ls.total, ls.prev.total)})*\n` +
+    "```\n" +
+    `              이번주     전주      변화\n` +
+    `🏠 홈 인라인  ${pad(String(ls.home), 9)} ${pad(String(ls.prev.home), 9)} ${changeIndicator(ls.home, ls.prev.home)}\n` +
+    `📋 문의 페이지 ${pad(String(ls.request), 8)} ${pad(String(ls.prev.request), 9)} ${changeIndicator(ls.request, ls.prev.request)}\n` +
+    "```",
+  ));
+  blocks.push(dividerBlock());
+
+  // Home funnel summary (간단 라인)
+  const hf = data.homeFunnel.stages;
+  if (hf.length === 3) {
+    blocks.push(sectionMrkdwn(
+      `*🏠 홈 인라인 폼 퍼널*\n` +
+      `${hf[0].stage} ${hf[0].value}명 → ${hf[1].stage} ${hf[1].value}명 (${hf[1].rate}%) → ${hf[2].stage} ${hf[2].value}건 (${hf[2].rate}%)`,
+    ));
+    blocks.push(dividerBlock());
+  }
+
+  // LeadMagnet + Blog cards (홈 콘텐츠 성과)
+  const lm = data.leadMagnet;
+  const bc = data.blogCards;
+  if (lm.impressions > 0 || bc.impressions > 0) {
+    blocks.push(sectionMrkdwn(
+      `*📘 홈 콘텐츠 성과*\n` +
+      `LeadMagnet (가이드북)  노출 ${formatNumber(lm.impressions)} · 클릭 ${formatNumber(lm.clicks)} · CTR ${formatPct(lm.ctr)}\n` +
+      `Blog 3카드 섹션         노출 ${formatNumber(bc.impressions)} · 클릭 ${formatNumber(bc.clicks)} · CTR ${formatPct(bc.ctr)}`,
+    ));
+    blocks.push(dividerBlock());
+  }
+
   // Funnel
   const stages = data.inquiryFunnel.stages;
   const totalUsers = stages.length > 0 ? stages[0].value : k.users;

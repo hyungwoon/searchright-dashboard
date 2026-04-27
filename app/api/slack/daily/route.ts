@@ -191,6 +191,43 @@ async function fetchDailyFunnel(dateRange: DateRange): Promise<DailyFunnel> {
   };
 }
 
+interface DailyHomeFunnel {
+  formStart: number;
+  formProgress: number;
+  lead: number;
+}
+
+async function fetchDailyHomeFunnel(dateRange: DateRange): Promise<DailyHomeFunnel> {
+  const homeEvents = ["home_form_start", "home_form_progress", "home_generate_lead"];
+
+  const rows = await runReport({
+    dimensions: ["eventName"],
+    metrics: ["totalUsers"],
+    dateRange,
+    dimensionFilter: {
+      orGroup: {
+        expressions: homeEvents.map((ev) => ({
+          filter: {
+            fieldName: "eventName",
+            stringFilter: { matchType: "EXACT", value: ev },
+          },
+        })),
+      },
+    },
+  });
+
+  const map: Record<string, number> = {};
+  for (const r of rows) {
+    map[str(r.eventName)] = num(r.totalUsers);
+  }
+
+  return {
+    formStart: map["home_form_start"] ?? 0,
+    formProgress: map["home_form_progress"] ?? 0,
+    lead: map["home_generate_lead"] ?? 0,
+  };
+}
+
 interface DailyChannel {
   name: string;
   sessions: number;
@@ -226,6 +263,10 @@ const EVENT_DISPLAY: Record<string, string> = {
   inquiry_page_view: "문의 페이지 진입",
   inquiry_form_start: "문의 폼 입력",
   inquiry_generate_lead: "문의 제출 완료",
+  home_report_impression: "가이드북 노출",
+  home_report_outbound_click: "가이드북 클릭",
+  home_blog_section_impression: "Blog 카드 노출",
+  home_blog_card_click: "Blog 카드 클릭",
 };
 
 async function fetchDailyEvents(dateRange: DateRange): Promise<DailyEvent[]> {
@@ -265,6 +306,7 @@ function buildDailyBlocks(
   kpis: DailyKpis,
   prevKpis: DailyKpis,
   funnel: DailyFunnel,
+  homeFunnel: DailyHomeFunnel,
   channels: DailyChannel[],
   events: DailyEvent[],
 ): unknown[] {
@@ -290,17 +332,38 @@ function buildDailyBlocks(
   ));
   blocks.push(dividerBlock());
 
-  // Funnel
+  // Lead summary (홈 vs 문의 합산)
+  const totalLeads = funnel.lead + homeFunnel.lead;
+  blocks.push(sectionMrkdwn(
+    `*💎 어제 리드 종합 — 총 ${totalLeads}건*\n` +
+    `🏠 홈 인라인 폼\t${homeFunnel.lead}건\n` +
+    `📋 문의 페이지\t${funnel.lead}건`,
+  ));
+  blocks.push(dividerBlock());
+
+  // Home funnel
+  const homeLines: string[] = [];
+  homeLines.push(`폼 시작\t\t${homeFunnel.formStart}명`);
+  homeLines.push(`이메일 진행\t\t${homeFunnel.formProgress}명`);
+  if (homeFunnel.lead > 0) {
+    homeLines.push(`홈 리드 전환\t${homeFunnel.lead}건 ✅`);
+  } else {
+    homeLines.push(`홈 리드 전환\t아직 없음 —`);
+  }
+  blocks.push(sectionMrkdwn(`*🏠 홈 인라인 폼 퍼널*\n${homeLines.join("\n")}`));
+  blocks.push(dividerBlock());
+
+  // Inquiry funnel
   const funnelLines: string[] = [];
   funnelLines.push(`문의 페이지 진입\t${funnel.pageView}명`);
   funnelLines.push(`폼 입력 시작\t\t${funnel.formStart}명`);
   if (funnel.lead > 0) {
-    funnelLines.push(`문의 제출 완료\t\t${funnel.lead}건 ✅`);
+    funnelLines.push(`문의 제출 완료\t${funnel.lead}건 ✅`);
   } else {
-    funnelLines.push(`문의 제출 완료\t\t아직 없음 —`);
+    funnelLines.push(`문의 제출 완료\t아직 없음 —`);
   }
 
-  blocks.push(sectionMrkdwn(`*🔄 문의 퍼널*\n${funnelLines.join("\n")}`));
+  blocks.push(sectionMrkdwn(`*📋 문의 페이지 퍼널*\n${funnelLines.join("\n")}`));
   blocks.push(dividerBlock());
 
   // Channels
@@ -345,15 +408,16 @@ export async function GET(_request: NextRequest) {
     };
 
     // Fetch all data in parallel
-    const [kpis, prevKpis, funnel, channels, events] = await Promise.all([
+    const [kpis, prevKpis, funnel, homeFunnel, channels, events] = await Promise.all([
       fetchDailyKpis(yesterdayRange),
       fetchDailyKpis(dayBeforeRange),
       fetchDailyFunnel(yesterdayRange),
+      fetchDailyHomeFunnel(yesterdayRange),
       fetchDailyChannels(yesterdayRange),
       fetchDailyEvents(yesterdayRange),
     ]);
 
-    const blocks = buildDailyBlocks(yesterday, kpis, prevKpis, funnel, channels, events);
+    const blocks = buildDailyBlocks(yesterday, kpis, prevKpis, funnel, homeFunnel, channels, events);
     const fallbackText = `SearchRight 데일리 리포트 | ${formatKoreanDate(yesterday)} — 세션 ${formatNumber(kpis.sessions)}, 사용자 ${formatNumber(kpis.users)}`;
 
     await sendSlackMessage(SLACK_CHANNEL, blocks, fallbackText);
