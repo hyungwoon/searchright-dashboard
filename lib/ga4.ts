@@ -122,6 +122,44 @@ export interface InquiryFunnelData {
   }[];
 }
 
+export interface HomeFunnelData {
+  stages: FunnelStage[];
+  channelAttribution: {
+    channel: string;
+    home_form_start: number;
+    home_form_progress: number;
+    home_generate_lead: number;
+  }[];
+  dailyTrend: {
+    date: string;
+    home_form_start: number;
+    home_form_progress: number;
+    home_generate_lead: number;
+  }[];
+}
+
+export interface LeadSummaryData {
+  home: number;
+  request: number;
+  total: number;
+  prev: { home: number; request: number; total: number };
+  dailyTrend: { date: string; home: number; request: number }[];
+}
+
+export interface LeadMagnetData {
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  prev: { impressions: number; clicks: number; ctr: number };
+}
+
+export interface BlogCardsData {
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  prev: { impressions: number; clicks: number; ctr: number };
+}
+
 export interface AllData {
   kpis: KpiData;
   dailyTrend: DailyRow[];
@@ -135,6 +173,10 @@ export interface AllData {
   hostnames: HostnameRow[];
   dayOfWeek: DayOfWeekRow[];
   inquiryFunnel: InquiryFunnelData;
+  homeFunnel: HomeFunnelData;
+  leadSummary: LeadSummaryData;
+  leadMagnet: LeadMagnetData;
+  blogCards: BlogCardsData;
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +326,14 @@ const EVENT_META: Record<string, { name: string; color: string; desc: string }> 
   generate_lead: { name: "리드 전환", color: "#22c55e", desc: "문의 폼 제출 완료 (레거시)" },
   Request_landing_cta_demo: { name: "데모 요청 CTA", color: "#f43f5e", desc: "메인페이지 데모 요청 버튼 클릭" },
   Blog_ebook_download_click: { name: "이북 다운로드", color: "#ec4899", desc: "블로그 eBook 다운로드 클릭" },
+  // ─── Home 개선 (2026-04 인라인 폼 + LeadMagnet + Blog 카드) ───
+  home_form_start: { name: "홈 폼 시작", color: "#38bdf8", desc: "홈 인라인 폼 첫 필드 포커스" },
+  home_form_progress: { name: "홈 폼 진행", color: "#0ea5e9", desc: "홈 폼 이메일 입력 + 필드 진행" },
+  home_generate_lead: { name: "홈 리드 전환", color: "#16a34a", desc: "홈 인라인 폼 제출 완료" },
+  home_report_impression: { name: "가이드북 노출", color: "#fbbf24", desc: "LeadMagnet 섹션 50% 노출" },
+  home_report_outbound_click: { name: "가이드북 클릭", color: "#f97316", desc: "LeadMagnet 다운로드 CTA 클릭 (외부 이동)" },
+  home_blog_section_impression: { name: "Blog 카드 노출", color: "#d8b4fe", desc: "홈 Blog 카드 50% 노출 (카드별)" },
+  home_blog_card_click: { name: "Blog 카드 클릭", color: "#a855f7", desc: "홈 Blog 카드 클릭" },
 };
 
 const DEVICE_COLORS: Record<string, string> = {
@@ -702,6 +752,274 @@ export async function fetchInquiryFunnel(period: Period): Promise<InquiryFunnelD
 }
 
 // ---------------------------------------------------------------------------
+// Home funnel — 홈 인라인 폼 3단계 (home_form_start → home_form_progress → home_generate_lead)
+// ---------------------------------------------------------------------------
+
+export async function fetchHomeFunnel(period: Period): Promise<HomeFunnelData> {
+  const { current } = periodToDateRanges(period);
+
+  const homeEvents = ["home_form_start", "home_form_progress", "home_generate_lead"];
+
+  const eventFilter = {
+    orGroup: {
+      expressions: homeEvents.map((ev) => ({
+        filter: {
+          fieldName: "eventName",
+          stringFilter: { matchType: "EXACT", value: ev },
+        },
+      })),
+    },
+  };
+
+  const [totalsRows, channelRows, dailyRows] = await Promise.all([
+    runReport({
+      dimensions: ["eventName"],
+      metrics: ["eventCount", "totalUsers"],
+      dateRange: current,
+      dimensionFilter: eventFilter,
+    }),
+    runReport({
+      dimensions: ["sessionDefaultChannelGroup", "eventName"],
+      metrics: ["eventCount"],
+      dateRange: current,
+      dimensionFilter: eventFilter,
+    }),
+    runReport({
+      dimensions: ["date", "eventName"],
+      metrics: ["eventCount"],
+      dateRange: current,
+      dimensionFilter: eventFilter,
+      orderBys: [{ dimension: "date", desc: false }],
+    }),
+  ]);
+
+  const eventTotals: Record<string, { count: number; users: number }> = {};
+  for (const r of totalsRows) {
+    eventTotals[str(r.eventName)] = {
+      count: num(r.eventCount),
+      users: num(r.totalUsers),
+    };
+  }
+
+  const startVal = eventTotals["home_form_start"]?.users ?? 0;
+  const progressVal = eventTotals["home_form_progress"]?.users ?? 0;
+  const leadVal = eventTotals["home_generate_lead"]?.users ?? 0;
+
+  const stages: FunnelStage[] = [
+    { stage: "홈 폼 시작", value: startVal, rate: 100 },
+    {
+      stage: "이메일 입력 진행",
+      value: progressVal,
+      rate: startVal > 0 ? pct(progressVal, startVal) : 0,
+    },
+    {
+      stage: "홈 리드 전환",
+      value: leadVal,
+      rate: startVal > 0 ? pct(leadVal, startVal) : 0,
+    },
+  ];
+
+  const channelMap: Record<string, Record<string, number>> = {};
+  for (const r of channelRows) {
+    const ch = str(r.sessionDefaultChannelGroup);
+    const ev = str(r.eventName);
+    if (!channelMap[ch]) channelMap[ch] = {};
+    channelMap[ch][ev] = (channelMap[ch][ev] ?? 0) + num(r.eventCount);
+  }
+
+  const channelAttribution = Object.entries(channelMap)
+    .map(([channel, evts]) => ({
+      channel,
+      home_form_start: evts["home_form_start"] ?? 0,
+      home_form_progress: evts["home_form_progress"] ?? 0,
+      home_generate_lead: evts["home_generate_lead"] ?? 0,
+    }))
+    .sort((a, b) => b.home_form_start - a.home_form_start);
+
+  const dayMap: Record<string, Record<string, number>> = {};
+  for (const r of dailyRows) {
+    const d = fmtDate(str(r.date));
+    const ev = str(r.eventName);
+    if (!dayMap[d]) dayMap[d] = {};
+    dayMap[d][ev] = (dayMap[d][ev] ?? 0) + num(r.eventCount);
+  }
+
+  const dailyTrend = Object.entries(dayMap)
+    .sort(([a], [b]) => {
+      const [am, ad] = a.split("/").map(Number);
+      const [bm, bd] = b.split("/").map(Number);
+      return am !== bm ? am - bm : ad - bd;
+    })
+    .map(([date, evts]) => ({
+      date,
+      home_form_start: evts["home_form_start"] ?? 0,
+      home_form_progress: evts["home_form_progress"] ?? 0,
+      home_generate_lead: evts["home_generate_lead"] ?? 0,
+    }));
+
+  return { stages, channelAttribution, dailyTrend };
+}
+
+// ---------------------------------------------------------------------------
+// Lead summary — 홈 인라인 폼 vs 문의 페이지 리드 합산 비교
+// ---------------------------------------------------------------------------
+
+async function fetchLeadCounts(dateRange: DateRange): Promise<{
+  home: number;
+  request: number;
+  daily: { date: string; home: number; request: number }[];
+}> {
+  const leadEvents = ["home_generate_lead", "inquiry_generate_lead", "generate_lead"];
+
+  const eventFilter = {
+    orGroup: {
+      expressions: leadEvents.map((ev) => ({
+        filter: {
+          fieldName: "eventName",
+          stringFilter: { matchType: "EXACT", value: ev },
+        },
+      })),
+    },
+  };
+
+  const [totalsRows, dailyRows] = await Promise.all([
+    runReport({
+      dimensions: ["eventName"],
+      metrics: ["eventCount"],
+      dateRange,
+      dimensionFilter: eventFilter,
+    }),
+    runReport({
+      dimensions: ["date", "eventName"],
+      metrics: ["eventCount"],
+      dateRange,
+      dimensionFilter: eventFilter,
+      orderBys: [{ dimension: "date", desc: false }],
+    }),
+  ]);
+
+  const totals: Record<string, number> = {};
+  for (const r of totalsRows) {
+    totals[str(r.eventName)] = num(r.eventCount);
+  }
+
+  const home = totals["home_generate_lead"] ?? 0;
+  const request =
+    (totals["inquiry_generate_lead"] ?? 0) + (totals["generate_lead"] ?? 0);
+
+  const dayMap: Record<string, { home: number; request: number }> = {};
+  for (const r of dailyRows) {
+    const d = fmtDate(str(r.date));
+    const ev = str(r.eventName);
+    const cnt = num(r.eventCount);
+    if (!dayMap[d]) dayMap[d] = { home: 0, request: 0 };
+    if (ev === "home_generate_lead") dayMap[d].home += cnt;
+    else dayMap[d].request += cnt; // inquiry_generate_lead + generate_lead
+  }
+
+  const daily = Object.entries(dayMap)
+    .sort(([a], [b]) => {
+      const [am, ad] = a.split("/").map(Number);
+      const [bm, bd] = b.split("/").map(Number);
+      return am !== bm ? am - bm : ad - bd;
+    })
+    .map(([date, v]) => ({ date, home: v.home, request: v.request }));
+
+  return { home, request, daily };
+}
+
+export async function fetchLeadSummary(period: Period): Promise<LeadSummaryData> {
+  const { current, previous } = periodToDateRanges(period);
+
+  const [cur, prev] = await Promise.all([
+    fetchLeadCounts(current),
+    fetchLeadCounts(previous),
+  ]);
+
+  return {
+    home: cur.home,
+    request: cur.request,
+    total: cur.home + cur.request,
+    prev: {
+      home: prev.home,
+      request: prev.request,
+      total: prev.home + prev.request,
+    },
+    dailyTrend: cur.daily,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// LeadMagnet (가이드북) — 임프레션 → 클릭 → CTR
+// ---------------------------------------------------------------------------
+
+async function fetchEventCount(
+  dateRange: DateRange,
+  eventName: string,
+): Promise<number> {
+  const rows = await runReport({
+    dimensions: ["eventName"],
+    metrics: ["eventCount"],
+    dateRange,
+    dimensionFilter: {
+      filter: {
+        fieldName: "eventName",
+        stringFilter: { matchType: "EXACT", value: eventName },
+      },
+    },
+  });
+  return rows[0] ? num(rows[0].eventCount) : 0;
+}
+
+export async function fetchLeadMagnet(period: Period): Promise<LeadMagnetData> {
+  const { current, previous } = periodToDateRanges(period);
+
+  const [curImp, curClk, prevImp, prevClk] = await Promise.all([
+    fetchEventCount(current, "home_report_impression"),
+    fetchEventCount(current, "home_report_outbound_click"),
+    fetchEventCount(previous, "home_report_impression"),
+    fetchEventCount(previous, "home_report_outbound_click"),
+  ]);
+
+  return {
+    impressions: curImp,
+    clicks: curClk,
+    ctr: curImp > 0 ? pct(curClk, curImp) : 0,
+    prev: {
+      impressions: prevImp,
+      clicks: prevClk,
+      ctr: prevImp > 0 ? pct(prevClk, prevImp) : 0,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Blog 3카드 — 임프레션 → 클릭 → CTR
+// ---------------------------------------------------------------------------
+
+export async function fetchBlogCards(period: Period): Promise<BlogCardsData> {
+  const { current, previous } = periodToDateRanges(period);
+
+  const [curImp, curClk, prevImp, prevClk] = await Promise.all([
+    fetchEventCount(current, "home_blog_section_impression"),
+    fetchEventCount(current, "home_blog_card_click"),
+    fetchEventCount(previous, "home_blog_section_impression"),
+    fetchEventCount(previous, "home_blog_card_click"),
+  ]);
+
+  return {
+    impressions: curImp,
+    clicks: curClk,
+    ctr: curImp > 0 ? pct(curClk, curImp) : 0,
+    prev: {
+      impressions: prevImp,
+      clicks: prevClk,
+      ctr: prevImp > 0 ? pct(prevClk, prevImp) : 0,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Fetch all data in one call
 // ---------------------------------------------------------------------------
 
@@ -719,6 +1037,10 @@ export async function fetchAllData(period: Period): Promise<AllData> {
     hostnames,
     dayOfWeek,
     inquiryFunnel,
+    homeFunnel,
+    leadSummary,
+    leadMagnet,
+    blogCards,
   ] = await Promise.all([
     fetchKpis(period),
     fetchDailyTrend(period),
@@ -732,6 +1054,10 @@ export async function fetchAllData(period: Period): Promise<AllData> {
     fetchHostnames(period),
     fetchDayOfWeek(period),
     fetchInquiryFunnel(period),
+    fetchHomeFunnel(period),
+    fetchLeadSummary(period),
+    fetchLeadMagnet(period),
+    fetchBlogCards(period),
   ]);
 
   // Inject "전체 방문자" as first funnel stage using total users from KPIs
@@ -760,5 +1086,9 @@ export async function fetchAllData(period: Period): Promise<AllData> {
     hostnames,
     dayOfWeek,
     inquiryFunnel: enrichedFunnel,
+    homeFunnel,
+    leadSummary,
+    leadMagnet,
+    blogCards,
   };
 }

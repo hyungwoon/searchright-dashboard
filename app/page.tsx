@@ -19,6 +19,10 @@ import PageConversion from "@/components/page-conversion";
 import CountryChart from "@/components/country-chart";
 import DayOfWeek from "@/components/day-of-week";
 import FunnelTrend from "@/components/funnel-trend";
+import LeadSourceSummary from "@/components/lead-source-summary";
+import HomeFunnel from "@/components/home-funnel";
+import LeadMagnetCard from "@/components/lead-magnet-card";
+import BlogCardsCard from "@/components/blog-cards-card";
 import { SummaryBanner, InsightBox } from "@/components/insight-box";
 import { summaryInsight, reportMeta, sectionInsights } from "@/lib/insights";
 import PasswordGate from "@/components/password-gate";
@@ -76,18 +80,24 @@ export default function Dashboard() {
 
         <DailyTrend data={analytics.dailyTrend} />
 
-        {/* 문의 퍼널 심화 섹션 */}
+        {/* 리드 인입 종합 — 홈 인라인 폼 vs 문의 페이지 */}
+        <LeadSourceSummary data={analytics.leadSummary} />
+
+        {/* 리드 퍼널 심화 섹션 (홈 + 문의 통합) */}
         <div className="backdrop-blur-xl bg-white/[0.02] border border-blue-500/15 rounded-[24px] p-1.5 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent" />
           <div className="px-5 pt-5 pb-2">
-            <h2 className="text-xl font-semibold text-amber-400/90">문의하기 퍼널 심층 분석</h2>
-            <p className="text-[13px] text-white/30 mt-1">전체 방문 → 문의 페이지 → 폼 입력 → 제출</p>
+            <h2 className="text-xl font-semibold text-amber-400/90">리드 퍼널 심층 분석</h2>
+            <p className="text-[13px] text-white/30 mt-1">
+              홈 인라인 폼 (Hero 섹션) · 문의 페이지(/request) — 출처별 분리 진단
+            </p>
           </div>
           <div className="space-y-5 p-4">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <HomeFunnel data={analytics.homeFunnel} />
               <FunnelChart period={period} data={analytics.funnel} />
-              <ChannelConversion data={analytics.channelConversion} />
             </div>
+            <ChannelConversion data={analytics.channelConversion} />
             <InsightBox comments={sectionInsights.find(s => s.section === "funnel")?.comments ?? []} />
             <FunnelTrend data={analytics.dailyFunnel} />
             <PageConversion data={analytics.pageConversion} />
@@ -117,6 +127,12 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <HostnameChart data={analytics.hostnames} />
           <CountryChart data={analytics.countries} />
+        </div>
+
+        {/* 홈 콘텐츠 성과 — LeadMagnet + Blog 카드 섹션 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <LeadMagnetCard data={analytics.leadMagnet} />
+          <BlogCardsCard data={analytics.blogCards} />
         </div>
 
         <EventsChart period={period} data={analytics.events} />
