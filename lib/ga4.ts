@@ -1089,6 +1089,22 @@ export async function fetchAllData(period: Period): Promise<AllData> {
     ],
   };
 
+  // Enrich home funnel: prepend [전체 방문자, 홈화면 방문자] so users see the
+  // real top-of-funnel drop-off, not just "form_start = 100%".
+  const homeVisitorPage = topPages.find((p) => p.path === "/");
+  const homeVisitors = homeVisitorPage?.users ?? 0;
+  const enrichedHomeFunnel: HomeFunnelData = {
+    ...homeFunnel,
+    stages: [
+      { stage: "전체 방문자", value: totalUsers, rate: 100 },
+      { stage: "홈화면 방문자", value: homeVisitors, rate: pct(homeVisitors, totalUsers) },
+      ...homeFunnel.stages.map((s) => ({
+        ...s,
+        rate: pct(s.value, totalUsers),
+      })),
+    ],
+  };
+
   return {
     kpis,
     dailyTrend,
@@ -1102,7 +1118,7 @@ export async function fetchAllData(period: Period): Promise<AllData> {
     hostnames,
     dayOfWeek,
     inquiryFunnel: enrichedFunnel,
-    homeFunnel,
+    homeFunnel: enrichedHomeFunnel,
     leadSummary,
     leadMagnet,
     blogCards,

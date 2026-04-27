@@ -1,7 +1,8 @@
 "use client";
 import type { HomeFunnelData } from "@/lib/ga4";
 
-const COLORS = ["#38bdf8", "#0ea5e9", "#16a34a"];
+// 5 stages: 전체 방문자 → 홈화면 방문자 → 홈 폼 시작 → 이메일 진행 → 홈 리드 전환
+const COLORS = ["#3b82f6", "#6366f1", "#38bdf8", "#0ea5e9", "#16a34a"];
 
 export default function HomeFunnel({ data }: { data: HomeFunnelData }) {
   const funnel = data.stages;
@@ -12,10 +13,10 @@ export default function HomeFunnel({ data }: { data: HomeFunnelData }) {
       <div className="card">
         <h2 className="text-lg font-semibold mb-1">🏠 홈 인라인 폼 퍼널</h2>
         <p className="text-xs text-[#64748b] mb-4">
-          home_form_start → home_form_progress → home_generate_lead
+          전체 방문 → 홈화면 → 폼 시작 → 이메일 → 제출
         </p>
         <div className="text-center text-sm text-[#64748b] py-12">
-          선택 기간에 홈 폼 이벤트가 없습니다.
+          선택 기간에 데이터가 없습니다.
         </div>
       </div>
     );
@@ -25,6 +26,12 @@ export default function HomeFunnel({ data }: { data: HomeFunnelData }) {
     funnel[0].value > 0
       ? ((funnel[funnel.length - 1].value / funnel[0].value) * 100).toFixed(2)
       : "0";
+
+  // Conversion from 홈화면 방문 → 리드 (funnel[1] is "홈화면 방문자")
+  const homeToLeadRate =
+    funnel.length >= 3 && funnel[1].value > 0
+      ? ((funnel[funnel.length - 1].value / funnel[1].value) * 100).toFixed(2)
+      : null;
 
   // Biggest drop-off
   let maxDropIdx = 1;
@@ -98,12 +105,20 @@ export default function HomeFunnel({ data }: { data: HomeFunnelData }) {
           );
         })}
       </div>
-      <div className="mt-4 p-3 bg-[#0f172a] rounded-lg flex items-center justify-between">
-        <div>
-          <div className="text-sm text-[#94a3b8]">홈 폼 전환율</div>
-          <div className="text-xs text-[#64748b]">폼 시작 → 리드 전환</div>
+      <div className="mt-4 p-3 bg-[#0f172a] rounded-lg">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm text-[#94a3b8]">홈 리드 전환율</div>
+            <div className="text-xs text-[#64748b]">전체 방문자 → 홈 리드 전환</div>
+          </div>
+          <div className="text-2xl font-bold text-[#16a34a]">{overallRate}%</div>
         </div>
-        <div className="text-2xl font-bold text-[#16a34a]">{overallRate}%</div>
+        {homeToLeadRate && (
+          <div className="mt-2 text-xs text-[#94a3b8]">
+            홈화면 방문 → 리드 전환율:{" "}
+            <span className="text-[#16a34a] font-semibold">{homeToLeadRate}%</span>
+          </div>
+        )}
       </div>
     </div>
   );
