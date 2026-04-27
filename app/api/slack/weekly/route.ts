@@ -143,12 +143,26 @@ function buildWeeklyBlocks(
   ));
   blocks.push(dividerBlock());
 
-  // Home funnel summary (간단 라인)
+  // Home funnel — full 5-stage table (mirrors 문의 전환 퍼널 format)
   const hf = data.homeFunnel.stages;
-  if (hf.length === 3) {
+  if (hf.length > 0 && hf[0].value > 0) {
+    const hfBase = hf[0].value;
+    const hfLines = hf.map((s) => {
+      const bar = progressBar(s.value, hfBase);
+      const rateStr = pad(formatPct(s.rate), 6);
+      return `${padRight(s.stage, 14)} ${pad(String(s.value) + "명", 6)} ${bar} ${rateStr}`;
+    });
+    const hfLeadStage = hf.find((s) => s.stage === "홈 리드 전환");
+    const hfOverallConv = hfBase > 0 && hfLeadStage
+      ? ((hfLeadStage.value / hfBase) * 100).toFixed(2)
+      : "0.00";
+
     blocks.push(sectionMrkdwn(
-      `*🏠 홈 인라인 폼 퍼널*\n` +
-      `${hf[0].stage} ${hf[0].value}명 → ${hf[1].stage} ${hf[1].value}명 (${hf[1].rate}%) → ${hf[2].stage} ${hf[2].value}건 (${hf[2].rate}%)`,
+      `*🏠 홈 인라인 폼 전환 퍼널*\n` +
+      "```\n" +
+      hfLines.join("\n") +
+      "\n```\n" +
+      `💡 주간 전환: 전체 방문자 → 홈 리드 *${hfOverallConv}%*`,
     ));
     blocks.push(dividerBlock());
   }
@@ -182,11 +196,11 @@ function buildWeeklyBlocks(
     : "0.0";
 
   blocks.push(sectionMrkdwn(
-    `*🔄 문의 전환 퍼널*\n` +
+    `*📋 문의 페이지 전환 퍼널*\n` +
     "```\n" +
     funnelLines.join("\n") +
     "\n```\n" +
-    `💡 주간 전환: 방문자 → 제출 *${overallConv}%*`,
+    `💡 주간 전환: 전체 방문자 → 문의 제출 *${overallConv}%*`,
   ));
   blocks.push(dividerBlock());
 
