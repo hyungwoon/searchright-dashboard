@@ -27,6 +27,8 @@ export interface DailyRow {
   sessions: number;
   users: number;
   pageviews: number;
+  engRate?: number;
+  bounce?: number;
 }
 
 export interface ChannelRow {
@@ -400,7 +402,13 @@ export async function fetchDailyTrend(period: Period): Promise<DailyRow[]> {
 
   const rows = await runReport({
     dimensions: ["date"],
-    metrics: ["sessions", "totalUsers", "screenPageViews"],
+    metrics: [
+      "sessions",
+      "totalUsers",
+      "screenPageViews",
+      "engagementRate",
+      "bounceRate",
+    ],
     dateRange: current,
     orderBys: [{ dimension: "date", desc: false }],
   });
@@ -410,6 +418,8 @@ export async function fetchDailyTrend(period: Period): Promise<DailyRow[]> {
     sessions: num(r.sessions),
     users: num(r.totalUsers),
     pageviews: num(r.screenPageViews),
+    engRate: Math.round(num(r.engagementRate) * 1000) / 10,
+    bounce: Math.round(num(r.bounceRate) * 1000) / 10,
   }));
 }
 

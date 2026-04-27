@@ -33,7 +33,7 @@ export type AnalyticsData = {
     newUsers?: number;
     prev: { sessions: number; users: number; pageviews: number; engRate: number; bounceRate: number };
   };
-  dailyTrend: { date: string; sessions: number; users: number; pageviews: number }[];
+  dailyTrend: { date: string; sessions: number; users: number; pageviews: number; engRate?: number; bounce?: number }[];
   channels: { name: string; sessions: number; users: number; pageviews: number; engRate: number }[];
   sourceMedium: { source: string; medium: string; sessions: number; users: number; pageviews: number; engRate: number }[];
   topPages: { path: string; label: string; views: number; users: number; engRate: number }[];
