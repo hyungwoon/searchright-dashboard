@@ -258,7 +258,9 @@ function padRight(s: string, len: number): string {
 // Route handler
 // ---------------------------------------------------------------------------
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
+  const ua = request.headers.get("user-agent") ?? "";
+  const isCron = ua.includes("vercel-cron");
   try {
     // Fetch 7-day data (includes prev comparison)
     const data = await fetchAllData("7d");
@@ -289,17 +291,19 @@ export async function GET(_request: NextRequest) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error(`[slack/weekly] Error: ${message}`);
 
-    // Try to send error notification to Slack
-    try {
-      await sendSlackMessage(
-        SLACK_CHANNEL,
-        [sectionMrkdwn(`⚠️ *위클리 리포트 생성 실패*\n\`${message}\``)],
-        `위클리 리포트 생성 실패: ${message}`,
-      );
-    } catch {
-      console.error("[slack/weekly] Failed to send error notification to Slack");
+    // Only post failure alert to Slack when called by Vercel Cron — silent for manual tests
+    if (isCron) {
+      try {
+        await sendSlackMessage(
+          SLACK_CHANNEL,
+          [sectionMrkdwn(`⚠️ *위클리 리포트 생성 실패*\n\`${message}\``)],
+          `위클리 리포트 생성 실패: ${message}`,
+        );
+      } catch {
+        console.error("[slack/weekly] Failed to send error notification to Slack");
+      }
     }
 
-    return Response.json({ ok: false, error: message }, { status: 500 });
+    return Response.json({ ok: false, error: message, cron: isCron }, { status: 500 });
   }
 }

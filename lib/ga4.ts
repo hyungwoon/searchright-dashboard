@@ -931,10 +931,9 @@ async function fetchLeadCounts(dateRange: DateRange): Promise<{
 export async function fetchLeadSummary(period: Period): Promise<LeadSummaryData> {
   const { current, previous } = periodToDateRanges(period);
 
-  const [cur, prev] = await Promise.all([
-    fetchLeadCounts(current),
-    fetchLeadCounts(previous),
-  ]);
+  // Serial cur → prev to keep concurrent GA4 inflight low (quota = ~10/property)
+  const cur = await fetchLeadCounts(current);
+  const prev = await fetchLeadCounts(previous);
 
   return {
     home: cur.home,
@@ -950,36 +949,45 @@ export async function fetchLeadSummary(period: Period): Promise<LeadSummaryData>
 }
 
 // ---------------------------------------------------------------------------
-// LeadMagnet (가이드북) — 임프레션 → 클릭 → CTR
+// LeadMagnet (가이드북) + Blog 3카드 — 임프레션 → 클릭 → CTR
 // ---------------------------------------------------------------------------
 
-async function fetchEventCount(
+async function fetchEventCounts(
   dateRange: DateRange,
-  eventName: string,
-): Promise<number> {
+  eventNames: string[],
+): Promise<Record<string, number>> {
   const rows = await runReport({
     dimensions: ["eventName"],
     metrics: ["eventCount"],
     dateRange,
     dimensionFilter: {
-      filter: {
-        fieldName: "eventName",
-        stringFilter: { matchType: "EXACT", value: eventName },
+      orGroup: {
+        expressions: eventNames.map((ev) => ({
+          filter: {
+            fieldName: "eventName",
+            stringFilter: { matchType: "EXACT", value: ev },
+          },
+        })),
       },
     },
   });
-  return rows[0] ? num(rows[0].eventCount) : 0;
+  const map: Record<string, number> = {};
+  for (const r of rows) map[str(r.eventName)] = num(r.eventCount);
+  return map;
 }
 
 export async function fetchLeadMagnet(period: Period): Promise<LeadMagnetData> {
   const { current, previous } = periodToDateRanges(period);
+  const events = ["home_report_impression", "home_report_outbound_click"];
 
-  const [curImp, curClk, prevImp, prevClk] = await Promise.all([
-    fetchEventCount(current, "home_report_impression"),
-    fetchEventCount(current, "home_report_outbound_click"),
-    fetchEventCount(previous, "home_report_impression"),
-    fetchEventCount(previous, "home_report_outbound_click"),
-  ]);
+  // Serial cur → prev to keep concurrent GA4 inflight low
+  const cur = await fetchEventCounts(current, events);
+  const prev = await fetchEventCounts(previous, events);
+
+  const curImp = cur["home_report_impression"] ?? 0;
+  const curClk = cur["home_report_outbound_click"] ?? 0;
+  const prevImp = prev["home_report_impression"] ?? 0;
+  const prevClk = prev["home_report_outbound_click"] ?? 0;
 
   return {
     impressions: curImp,
@@ -993,19 +1001,17 @@ export async function fetchLeadMagnet(period: Period): Promise<LeadMagnetData> {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Blog 3카드 — 임프레션 → 클릭 → CTR
-// ---------------------------------------------------------------------------
-
 export async function fetchBlogCards(period: Period): Promise<BlogCardsData> {
   const { current, previous } = periodToDateRanges(period);
+  const events = ["home_blog_section_impression", "home_blog_card_click"];
 
-  const [curImp, curClk, prevImp, prevClk] = await Promise.all([
-    fetchEventCount(current, "home_blog_section_impression"),
-    fetchEventCount(current, "home_blog_card_click"),
-    fetchEventCount(previous, "home_blog_section_impression"),
-    fetchEventCount(previous, "home_blog_card_click"),
-  ]);
+  const cur = await fetchEventCounts(current, events);
+  const prev = await fetchEventCounts(previous, events);
+
+  const curImp = cur["home_blog_section_impression"] ?? 0;
+  const curClk = cur["home_blog_card_click"] ?? 0;
+  const prevImp = prev["home_blog_section_impression"] ?? 0;
+  const prevClk = prev["home_blog_card_click"] ?? 0;
 
   return {
     impressions: curImp,
@@ -1024,6 +1030,10 @@ export async function fetchBlogCards(period: Period): Promise<BlogCardsData> {
 // ---------------------------------------------------------------------------
 
 export async function fetchAllData(period: Period): Promise<AllData> {
+  // GA4 Data API has ~10 concurrent requests/property quota.
+  // Run in 3 sequential waves so each wave stays well under the limit.
+
+  // Wave 1: simple single-report fetches (≈9 inflight)
   const [
     kpis,
     dailyTrend,
@@ -1033,14 +1043,6 @@ export async function fetchAllData(period: Period): Promise<AllData> {
     events,
     devices,
     countries,
-    newVsReturning,
-    hostnames,
-    dayOfWeek,
-    inquiryFunnel,
-    homeFunnel,
-    leadSummary,
-    leadMagnet,
-    blogCards,
   ] = await Promise.all([
     fetchKpis(period),
     fetchDailyTrend(period),
@@ -1050,11 +1052,25 @@ export async function fetchAllData(period: Period): Promise<AllData> {
     fetchEvents(period),
     fetchDevices(period),
     fetchCountries(period),
+  ]);
+
+  // Wave 2: misc + funnels (≈9 inflight)
+  const [
+    newVsReturning,
+    hostnames,
+    dayOfWeek,
+    inquiryFunnel,
+    homeFunnel,
+  ] = await Promise.all([
     fetchNewVsReturning(period),
     fetchHostnames(period),
     fetchDayOfWeek(period),
     fetchInquiryFunnel(period),
     fetchHomeFunnel(period),
+  ]);
+
+  // Wave 3: lead aggregations (each function is internally serial, so ≈4 inflight)
+  const [leadSummary, leadMagnet, blogCards] = await Promise.all([
     fetchLeadSummary(period),
     fetchLeadMagnet(period),
     fetchBlogCards(period),

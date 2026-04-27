@@ -392,7 +392,9 @@ function buildDailyBlocks(
 // Route handler
 // ---------------------------------------------------------------------------
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
+  const ua = request.headers.get("user-agent") ?? "";
+  const isCron = ua.includes("vercel-cron");
   try {
     const yesterday = getYesterday();
     const dayBefore = new Date(yesterday);
@@ -432,17 +434,19 @@ export async function GET(_request: NextRequest) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error(`[slack/daily] Error: ${message}`);
 
-    // Try to send error notification to Slack
-    try {
-      await sendSlackMessage(
-        SLACK_CHANNEL,
-        [sectionMrkdwn(`⚠️ *데일리 리포트 생성 실패*\n\`${message}\``)],
-        `데일리 리포트 생성 실패: ${message}`,
-      );
-    } catch {
-      console.error("[slack/daily] Failed to send error notification to Slack");
+    // Only post failure alert to Slack when called by Vercel Cron — silent for manual tests
+    if (isCron) {
+      try {
+        await sendSlackMessage(
+          SLACK_CHANNEL,
+          [sectionMrkdwn(`⚠️ *데일리 리포트 생성 실패*\n\`${message}\``)],
+          `데일리 리포트 생성 실패: ${message}`,
+        );
+      } catch {
+        console.error("[slack/daily] Failed to send error notification to Slack");
+      }
     }
 
-    return Response.json({ ok: false, error: message }, { status: 500 });
+    return Response.json({ ok: false, error: message, cron: isCron }, { status: 500 });
   }
 }
