@@ -74,7 +74,20 @@ export default function Dashboard() {
       </header>
 
       <div className="space-y-5">
-        <SummaryBanner {...summaryInsight} analyzedAt={reportMeta.analyzedAt} />
+        <SummaryBanner
+          {...summaryInsight}
+          analyzedAt={
+            analytics.source === "live" && analytics.fetchedAt
+              ? `${new Date(analytics.fetchedAt).toLocaleString("ko-KR", {
+                  timeZone: "Asia/Seoul",
+                  month: "numeric",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })} KST · 데이터 라이브 (분석 코멘트는 ${reportMeta.analyzedAt} 기준)`
+              : `${reportMeta.analyzedAt} (정적)`
+          }
+        />
         <KpiCards data={analytics.kpis} />
         <InsightBox comments={sectionInsights.find(s => s.section === "kpi")?.comments ?? []} />
 
